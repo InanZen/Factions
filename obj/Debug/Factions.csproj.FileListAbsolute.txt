@@ -1,0 +1,12 @@
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\obj\Debug\ResolveAssemblyReference.cache
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\Factions.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\Factions.pdb
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\ChatAssistant.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\Mono.Data.Sqlite.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\MySql.Data.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\TerrariaServer.exe
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\TShockAPI.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\Newtonsoft.Json.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Debug\ChatAssistant.pdb
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\obj\Debug\Factions.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\obj\Debug\Factions.pdb

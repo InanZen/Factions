@@ -1,0 +1,14 @@
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\Factions.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\Factions.pdb
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\Mono.Data.Sqlite.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\MySql.Data.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\TerrariaServer.exe
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\TShockAPI.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\Newtonsoft.Json.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\obj\Release\ResolveAssemblyReference.cache
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\obj\Release\Factions.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\obj\Release\Factions.pdb
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\ChatAssistant.dll
+C:\Users\Peter\Documents\Visual Studio 2010\Projects\Factions\Factions\bin\Release\ChatAssistant.pdb
+D:\Program Files\Steam\steamapps\common\terraria\ServerPlugins\Factions.dll
+D:\Program Files\Steam\steamapps\common\terraria\ServerPlugins\Factions.pdb
