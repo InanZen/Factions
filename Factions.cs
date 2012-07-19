@@ -2439,11 +2439,11 @@ namespace Factions
             {
                 switch (e.MsgID)
                 {
-                    case PacketTypes.Status:
+                   /* case PacketTypes.Status:
                         {
                             Console.WriteLine("(SendData) Status ->  1: {0}, 2: {4}, 3: {5}, 4: {6}, 5: {1}, remote: {2}, ignore: {3}", e.number, e.number5, e.remoteClient, e.ignoreClient, e.number2, e.number3, e.number4);
                             break;   
-                        }
+                        */
                     case PacketTypes.TogglePvp:
                         {
                             //Console.WriteLine("(SendData) PvP ->  1: {0}, 2: {4}, 3: {5}, 4: {6}, 5: {1}, remote: {2}, ignore: {3}", e.number, e.number5, e.remoteClient, e.ignoreClient, e.number2, e.number3, e.number4);
