@@ -37,8 +37,9 @@
     <NoStdLib>false</NoStdLib>
   </PropertyGroup>
   <ItemGroup>
-    <Reference Include="ChatAssistant">
-      <HintPath>D:\Program Files\Steam\steamapps\common\terraria\ServerPlugins\ChatAssistant.dll</HintPath>
+    <Reference Include="ChatAssistant, Version=1.0.0.0, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\ChatAssistant\ChatAssistant\bin\Release\ChatAssistant.dll</HintPath>
     </Reference>
     <Reference Include="Mono.Data.Sqlite">
       <HintPath>..\..\..\Refs\Mono.Data.Sqlite.dll</HintPath>
@@ -53,16 +54,22 @@
     <Reference Include="Microsoft.CSharp" />
     <Reference Include="System.Data" />
     <Reference Include="System.Xml" />
-    <Reference Include="TerrariaServer">
-      <HintPath>..\..\..\Refs\TerrariaServer.exe</HintPath>
+    <Reference Include="TerrariaServer, Version=0.0.0.0, Culture=neutral, processorArchitecture=x86">
+      <SpecificVersion>False</SpecificVersion>
+      <ExecutableExtension>.exe</ExecutableExtension>
+      <HintPath>..\..\..\tShock References\4.0\TerrariaServer.exe</HintPath>
     </Reference>
-    <Reference Include="TShockAPI">
-      <HintPath>..\..\..\Refs\TShockAPI.dll</HintPath>
+    <Reference Include="TShockAPI, Version=3.9.0.526, Culture=neutral, processorArchitecture=MSIL">
+      <SpecificVersion>False</SpecificVersion>
+      <HintPath>..\..\..\tShock References\4.0\serverplugins\TShockAPI.dll</HintPath>
     </Reference>
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Faction.cs" />
     <Compile Include="Factions.cs" />
+    <Compile Include="Player.cs" />
     <Compile Include="Properties\AssemblyInfo.cs" />
+    <Compile Include="Region.cs" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <PropertyGroup>

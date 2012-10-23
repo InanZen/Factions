@@ -19,703 +19,19 @@ namespace Factions
     [APIVersion(1, 12)]
     public class Factions : TerrariaPlugin
     {
-        private class Player
-        {
-            public int ID;
-            public int UserID;
-            public Faction Faction;
-            public TSPlayer TSplayer;
-            public int Power;
-            public bool tempOutline = false;
-            public Chat.Menu Menu = null;
-            public bool changingMoney = false;
-            public Thread UpdateThread = null;
-            public byte LastState = 0;
-            public byte IdleCount = 0;
-            public Player(int id, int power, Faction faction) : this(id, power, faction, -1) { }
-            public Player(int id, int power, Faction faction, int userID)
-            {
-                this.ID = id;
-                this.UserID = userID;
-                if (id >= 0 && id < TShock.Players.Length)
-                {
-                    this.TSplayer = TShock.Players[id];
-                    if (this.TSplayer != null)
-                        this.UserID = this.TSplayer.UserID;
-                }
-                this.Faction = faction;
-                this.Power = power;
-            }
-            public bool ChangePower(int change)
-            {
-                if (change == 0)
-                    return true;
-                int newpower = this.Power + change;
-                if (newpower < -100 || newpower > 100)
-                    return false;
-                this.Power = newpower;
-
-                db.Query("UPDATE factions_Players SET Power = @0 WHERE UserID = @1 AND WorldID = @2", newpower, this.UserID, Main.worldID);
-                if (this.Faction != null)
-                    this.Faction.RefreshPower();
-                this.TSplayer.SendData(PacketTypes.Status, String.Format("Power: {0}\n", this.Power), -1);
-                return true;
-            }
-            public void CloseMenu()
-            {
-                this.ClearOutline();
-                if (this.Menu != null)
-                    this.Menu.Close();
-            }
-            public void ClearOutline()
-            {
-                if (this.tempOutline)
-                {
-                    this.tempOutline = false;
-                    this.TSplayer.SendTileSquare(this.TSplayer.TileX, this.TSplayer.TileY, 100);
-                }
-            }
-            public void StartUpdating()
-            {
-                try
-                {
-                    if (this.UpdateThread == null || !this.UpdateThread.IsAlive)
-                    {
-                        var updater = new Updater(this.ID);
-                        this.UpdateThread = new Thread(updater.UpdatePower);
-                        this.UpdateThread.Start();
-                        this.TSplayer.SendData(PacketTypes.Status, String.Format("Power: {0}\n", this.Power), -1);
-                    }
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-            }
-            public void StopUpdating()
-            {
-                try
-                {
-                    if (this.UpdateThread != null)
-                        this.UpdateThread.Abort();
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-            }
-            private class Updater
-            {
-                int who;                
-                byte PowerCount = 0;
-                public Updater(int who)
-                {
-                    this.who = who;
-                }
-                public void UpdatePower()
-                {
-                    while (Thread.CurrentThread.IsAlive)
-                    {                        
-                        var player = PlayerList[who];
-                        if (player != null)
-                        {
-                            try
-                            {
-                                if (player.IdleCount < 3)
-                                {
-                                    player.IdleCount++;
-                                    if (this.PowerCount == 10)                                    
-                                        player.ChangePower(3);                                    
-                                    this.PowerCount++;
-                                    if (this.PowerCount > 10)
-                                        this.PowerCount = 1;
-                                }
-                            }
-                            catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-                            Thread.Sleep(60000);
-                        }
-                        else
-                            Thread.CurrentThread.Abort();
-                    }
-                }
-            }
-
-        }
-        private class Region
-        {
-            public int ID;
-            public int X;
-            public int Y;
-            public int Width;
-            public int Height;
-            public byte Flags;
-            public int Owner;
-            public int Faction;
-            public Region(int id, int x, int y) : this(id, x, y, 0, 0, 0) { }
-            public Region(int id, int x, int y, int owner) : this(id, x, y, owner, 0, 0) { }
-            public Region(int id, int x, int y, int owner, int faction) : this(id, x, y, owner, faction, 0) { }
-            public Region(int id, int x, int y, int owner, int faction, byte flags)
-            {
-                this.ID = id;
-                this.X = x;
-                this.Y = y;
-                this.Width = 20;
-                this.Height = 20;
-                this.Flags = flags;
-                this.Owner = owner;
-                this.Faction = faction;
-            }
-            public bool InArea(Point point)
-            {
-                return InArea(point.X, point.Y);
-            }
-            public bool InArea(int x, int y)
-            {
-                if (x >= this.X && x < (this.X + this.Width) && y >= this.Y && y < (this.Y + this.Height))
-                    return true;
-                return false;
-            }
-
-
-        }
-        private class Faction
-        {
-            [Flags]
-            public enum Settings
-            {
-                Color1 = 1,
-                Color2 = 2,
-                Private = 4,
-                Hostile = 64
-            }
-            public int ID;
-            private string name;
-            public string Name
-            {
-                get { return this.name; }
-                set { this.name = value; db.Query("UPDATE factions_Factions SET Name = @0 WHERE ID = @1", this.name, this.ID); }
-            }
-            private string desc;
-            public string Desc
-            {
-                get { return this.desc; }
-                set { this.desc = value; db.Query("UPDATE factions_Factions SET Description = @0 WHERE ID = @1", this.desc, this.ID); }
-            }
-            public List<int> Members;
-            public List<int> Admins;
-            public List<int> Invites;
-            public List<Region> Regions;
-            private Settings Flags;
-            public int Power;
-            public List<int> Allies;
-            public List<int> AllyInvites;
-            public List<int> Enemies;
-            public Faction(int id, string name, string desc, Player player)
-            {
-                this.ID = id;
-                this.name = name;
-                this.desc = desc;
-                this.Power = player.Power;
-                this.Admins = new List<int>();
-                this.Admins.Add(player.UserID);
-                this.Members = new List<int>();
-                this.Members.Add(player.UserID);
-                this.Allies = new List<int>();
-                this.AllyInvites = new List<int>();
-                this.Enemies = new List<int>();
-                this.Regions = new List<Region>();
-                this.Invites = new List<int>();
-                this.Flags = (Settings)0;
-            }
-            public Faction(int id, string name, string desc, List<int> members, List<int> admins, List<int> invites, int power, List<Region> regions) : this(id, name, desc, members, admins, invites, power, regions, 0, new List<int>(), new List<int>(), new List<int>()) { }
-            public Faction(int id, string name, string desc, List<int> members, List<int> admins, List<int> invites, int power, List<Region> regions, byte flags, List<int> allies, List<int> allyinvites, List<int> enemies)
-            {
-                this.ID = id;
-                this.name = name;
-                this.desc = desc;
-                this.Members = members;
-                this.Admins = admins;
-                this.Invites = invites;
-                this.Regions = regions;
-                this.Flags = (Settings)flags;
-                this.Power = power;
-                this.Allies = allies;
-                this.AllyInvites = allyinvites;
-                this.Enemies = enemies;
-            }
-            public bool IsAdmin(int userID)
-            {
-                if (this.Admins.Contains(userID))
-                    return true;
-                return false;
-            }
-            public List<String> MemberNames() { return MemberNames(false); }
-            public List<String> MemberNames(bool excludeAdmins)
-            {
-                List<String> ReturnList = new List<string>();
-                try
-                {
-                    foreach (int userid in (excludeAdmins) ? this.Members.Except(this.Admins) : this.Members)
-                    {
-                        using (QueryResult reader = db.QueryReader("SELECT Name FROM factions_Players WHERE UserID = @0 AND WorldID = @1", userid, Main.worldID))
-                        {
-                            if (reader.Read())
-                                ReturnList.Add(reader.Get<string>("Name"));
-                        }
-                    }
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-                return ReturnList;
-            }
-            public List<String> AdminNames()
-            {
-                List<String> ReturnList = new List<string>();
-                try
-                {
-                    foreach (int userid in this.Admins)
-                    {
-                        using (QueryResult reader = db.QueryReader("SELECT Name FROM factions_Players WHERE UserID = @0 AND WorldID = @1", userid, Main.worldID))
-                        {
-                            if (reader.Read())
-                                ReturnList.Add(reader.Get<string>("Name"));
-                        }
-                    }
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-                return ReturnList;
-            }
-            public String TeamColor 
-            {
-                get
-                {
-                    if (this.Flags.HasFlag(Settings.Color1))
-                    {
-                        if (this.Flags.HasFlag(Settings.Color2))
-                            return "Yellow";
-                        else
-                            return "Green";
-                    }
-                    else
-                    {
-                        if (this.Flags.HasFlag(Settings.Color2))
-                            return "Blue";
-                        else
-                            return "Red";
-                    }
-                }
-            }
-            public byte Team
-            {
-                get
-                {
-                    if (this.Flags.HasFlag(Settings.Color1))
-                    {
-                        if (this.Flags.HasFlag(Settings.Color2))
-                            return 4;
-                        else
-                            return 2;
-                    }
-                    else 
-                    {
-                        if (this.Flags.HasFlag(Settings.Color2))
-                            return 3;
-                        else
-                            return 1;
-                    }
-                }
-                set
-                {
-                    switch (value)
-                    {
-                        case 4:
-                            {
-                                this.Flags |= Settings.Color1;
-                                this.Flags |= Settings.Color2;
-                                break;
-                            }
-                        case 3:
-                            {
-                                this.Flags &= ~Settings.Color1;
-                                this.Flags |= Settings.Color2;
-                                break;
-                            }
-                        case 2:
-                            {
-                                this.Flags |= Settings.Color1;
-                                this.Flags &= ~Settings.Color2;
-                                break;
-                            }
-                        default:
-                            {
-                                this.Flags &= ~Settings.Color1;
-                                this.Flags &= ~Settings.Color2;
-                                break;
-                            }
-                    }
-                    db.Query("UPDATE factions_Factions SET Flags = @0 WHERE ID = @1", this.Flags, this.ID);
-                    this.RefreshTeamStatus();
-                }
-            }
-            public bool Hostile
-            {
-                get
-                {
-                    return this.Flags.HasFlag(Settings.Hostile);
-                }
-                set
-                {
-                    if (value)
-                        this.Flags |= Settings.Hostile;
-                    else
-                        this.Flags &= ~Settings.Hostile;
-                        db.Query("UPDATE factions_Factions SET Flags = @0 WHERE ID = @1", this.Flags, this.ID);
-                    this.RefreshPVPStatus();
-                }
-            }
-            public bool Private
-            {
-                get
-                {
-                    return this.Flags.HasFlag(Settings.Private);
-                }
-                set
-                {
-                    if (value)
-                        this.Flags |= Settings.Private;
-                    else
-                        this.Flags &= ~Settings.Private;
-                        db.Query("UPDATE factions_Factions SET Flags = @0 WHERE ID = @1", this.Flags, this.ID);
-                }
-            }
-            public bool InvitePlayer(Player player)
-            {
-                if (player == null || player.UserID == -1)
-                    return false;
-                if (this.Invites.Contains(player.UserID))
-                {
-                    player.TSplayer.SendMessage(String.Format("You have been invited to join faction '{0}'", this.Name), Color.BurlyWood);
-                    return true;
-                }
-                else
-                {
-                    try
-                    {
-                        this.Invites.Add(player.UserID);
-                        db.Query("UPDATE factions_Factions SET Invites = @0 WHERE ID = @1", String.Join(",", this.Invites), this.ID);
-                        player.TSplayer.SendMessage(String.Format("You have been invited to join faction '{0}'", this.Name), Color.BurlyWood);
-                        return true;
-                    }
-                    catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-                }
-                return false;
-            }
-            public List<Faction> GetAllies()
-            {
-                List<Faction> returnList = new List<Faction>();
-                foreach (int fID in this.Allies)
-                {
-                    var fact = GetFactionByID(fID);
-                    if (fact != null)
-                        returnList.Add(fact);
-                }
-                return returnList;
-            }
-            public List<Faction> GetEnemies()
-            {
-                List<Faction> returnList = new List<Faction>();
-                foreach (int fID in this.Enemies)
-                {
-                    var fact = GetFactionByID(fID);
-                    if (fact != null)
-                        returnList.Add(fact);
-                }
-                return returnList;
-            }
-            public String GetAlliesString() { return String.Join(", ", this.GetAllies().Select(i => i.Name)); }
-            public String GetEnemiesString() { return String.Join(", ", this.GetEnemies().Select(i => i.Name)); }
-            public List<Player> GetOnlineMembers()
-            {
-                List<Player> returnList = new List<Player>();
-                foreach (Player ply in PlayerList)
-                {
-                    if (ply != null && ply.Faction != null && ply.Faction.Equals(this))
-                        returnList.Add(ply);
-                }
-                return returnList;
-            }
-            public bool AddMember(Player player)
-            {
-                if (player == null || player.ID == -1 || player.UserID == -1 || player.Faction != null)
-                    return false;
-                try
-                {
-                    player.Faction = this;
-                    if (this.Flags.HasFlag(Settings.Hostile) && !player.TSplayer.TPlayer.hostile)
-                    {
-                        player.TSplayer.TPlayer.hostile = true;
-                        TShockAPI.TSPlayer.All.SendData(PacketTypes.TogglePvp, "", player.ID);
-                        player.TSplayer.SendMessage("Your PvP status has been changed due to Faction Hostile status", Color.BurlyWood);
-                    }
-                    else if (!this.Flags.HasFlag(Settings.Hostile) && player.TSplayer.TPlayer.hostile)
-                    {
-                        player.TSplayer.TPlayer.hostile = false;
-                        TShockAPI.TSPlayer.All.SendData(PacketTypes.TogglePvp, "", player.ID);
-                        player.TSplayer.SendMessage("Your PvP status has been changed due to Faction Peaceful status", Color.BurlyWood);
-                    }
-                    this.Members.Add(player.UserID);
-                    this.Invites.Remove(player.UserID);
-                    this.Power += player.Power;
-                    db.Query("UPDATE factions_Factions SET Power = @0, Members = @1 WHERE ID = @2", this.Power, String.Join(",", this.Members), this.ID);
-                    db.Query("UPDATE factions_Players SET Faction = @0 WHERE UserID = @1 AND WorldID = @2", this.ID, player.UserID, Main.worldID);
-                    
-                    player.TSplayer.TPlayer.team = this.Team;
-                    player.TSplayer.SendData(PacketTypes.PlayerTeam, "", player.ID);
-                    foreach (Player member in this.GetOnlineMembers())
-                    {
-                        member.TSplayer.SendData(PacketTypes.PlayerTeam, "", player.ID);
-                        member.TSplayer.TPlayer.team = this.Team;
-                        player.TSplayer.SendData(PacketTypes.PlayerTeam, "", member.ID);
-                        member.TSplayer.SendMessage(String.Format("Player {0} has joined the faction", player.TSplayer.Name), Color.BurlyWood);
-                    }
-                    return true;
-                }
-                catch (Exception ex)
-                {
-                    Log.ConsoleError(ex.ToString());
-                    return false;
-                }
-            }
-            public void RemoveMember(int userid)
-            {
-                try
-                {
-                    this.Admins.Remove(userid);
-                    if (this.Members.Remove(userid))
-                    {
-                        var player = GetPlayerByUserID(userid);
-                        if (player != null)                        
-                            player.Faction = null;                        
-                        db.Query("UPDATE factions_Players SET Faction = @0 WHERE UserID = @1 AND WorldID = @2", 0, userid, Main.worldID);
-                        if (this.Members.Count == 0) // delete faction                        
-                            this.DeleteFaction();
-                        else // recalculate power
-                        {
-                            if (this.Admins.Count == 0)
-                                this.Admins = this.Members.ToList();
-                            db.Query("UPDATE factions_Factions SET Members = @0, Admins = @1 WHERE ID = @2", String.Join(",", this.Members), String.Join(",", this.Admins), this.ID);
-                            if (player != null)
-                            {
-                                player.TSplayer.TPlayer.team = 0;
-                                player.TSplayer.SendData(PacketTypes.PlayerTeam, "", player.ID);
-                                foreach (Player member in this.GetOnlineMembers())
-                                {
-                                    member.TSplayer.SendData(PacketTypes.PlayerTeam, "", player.ID);
-                                    member.TSplayer.TPlayer.team = 0;
-                                    player.TSplayer.SendData(PacketTypes.PlayerTeam, "", member.ID);
-                                    member.TSplayer.TPlayer.team = this.Team;
-                                    member.TSplayer.SendMessage(String.Format("Player {0} has left the faction", player.TSplayer.Name), Color.BurlyWood);
-                                }
-                            }
-                            RefreshPower();
-                        }
-                    }
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-            }
-            public void DeleteFaction()
-            {
-                try
-                {
-                    foreach (int userid in this.Members)
-                    {
-                        var player = GetPlayerByUserID(userid);
-                        if (player != null)
-                            player.Faction = null;
-                        db.Query("UPDATE factions_Players SET Faction = @0 WHERE UserID = @1 AND WorldID = @2", 0, userid, Main.worldID);
-                    }
-                    for (int i = this.Regions.Count - 1; i >= 0; i--)
-                    {
-                        if (Factions.Regions.Remove(this.Regions[i]))
-                        {
-                            db.Query("DELETE FROM factions_Regions WHERE ID = @0", this.Regions[i].ID);
-                            this.Regions[i].Faction = 0;
-                        }
-                    }
-                    if (FactionList.Remove(this))                    
-                        db.Query("DELETE FROM factions_Factions WHERE ID = @0", this.ID);        
-                    TShockAPI.TSPlayer.All.SendMessage(String.Format("Faction {0} has been deleted.", this.Name), Color.LightSalmon);
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-            }
-            public void RefreshTeamStatus()
-            {
-                var onlineMembers = this.GetOnlineMembers();
-                foreach (Player player in onlineMembers)
-                {
-                    if (player.TSplayer.TPlayer.team != this.Team)
-                    {
-                        player.TSplayer.TPlayer.team = this.Team;
-                        foreach (Player p2 in onlineMembers)
-                        {
-                            p2.TSplayer.SendData(PacketTypes.PlayerTeam, "", player.ID);
-                        }
-                    }
-                }
-            }
-            public void RefreshPVPStatus()
-            {
-                var onlineMembers = this.GetOnlineMembers();
-                foreach (Player player in onlineMembers)
-                {
-                    if ((this.Flags.HasFlag(Settings.Hostile) && !player.TSplayer.TPlayer.hostile) || (!this.Flags.HasFlag(Settings.Hostile) && player.TSplayer.TPlayer.hostile))
-                    {
-                        player.TSplayer.TPlayer.hostile = !player.TSplayer.TPlayer.hostile;
-                        NetMessage.SendData((int)PacketTypes.TogglePvp, -1, -1, "", player.ID);
-                        player.TSplayer.SendMessage(String.Format("Faction PvP status changed to: {0}. Please ensure it matches the settings in your client.", this.Hostile ? "Hostile" : "Peaceful"), Color.LightSalmon);
-                    }
-                }                
-            }
-            public void RefreshPower()
-            {
-                try
-                {
-                    int newPower = 0;
-
-                        foreach (int userid in this.Members)
-                        {
-                            using (QueryResult reader = db.QueryReader("SELECT Power FROM factions_Players WHERE UserID = @0 AND WorldID = @1", userid, Main.worldID))
-                            {
-                                if (reader.Read())
-                                    newPower += reader.Get<int>("Power");
-                            }
-                        }
-                        this.Power = newPower;
-                        db.Query("UPDATE factions_Factions SET Power = @0 WHERE ID = @1", newPower, this.ID);
-                    
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-            }
-            public bool RemovePower(int removeAmmount)
-            {
-
-                if (removeAmmount > this.Power)
-                    return false;
-                List<Player> memberList = new List<Player>();
-                try
-                {
-                    foreach (int userid in this.Members)
-                    {
-                        var player = GetPlayerByUserID(userid);
-                        if (player != null)
-                            memberList.Add(player);
-                        else
-                        {
-                            using (QueryResult reader = db.QueryReader("SELECT Power FROM factions_Players WHERE UserID = @0 AND WorldID = @1", userid, Main.worldID))
-                            {
-                                if (reader.Read())
-                                    memberList.Add(new Player(-1, reader.Get<int>("Power"), this, userid));
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-
-                while (removeAmmount > 0 && memberList.Count > 0)
-                {
-                    int share = removeAmmount / memberList.Count;
-                    if (share <= 0)
-                        break;
-                    /*   if (share * memberList.Count != removeAmmount)
-                           Console.WriteLine(" -> left: {0}", removeAmmount - share * memberList.Count);*/
-                    int leftover = 0;
-                    for (int i = memberList.Count - 1; i >= 0; i--)
-                    {
-                        var player = memberList[i];
-                        if (player.Power >= share)
-                            player.Power -= share;
-                        else
-                        {
-                            leftover += share - player.Power;
-                            player.Power = 0;
-                            memberList.Remove(player);
-                        }
-                        db.Query("UPDATE factions_Players SET Power = @0 WHERE UserID = @1 AND WorldID = @2", player.Power, player.UserID, Main.worldID);
-                    }
-                    removeAmmount = leftover;
-                }
-                this.RefreshPower();
-                return true;
-            }
-            public void MessageMembers(String message)
-            {
-                foreach (Player player in this.GetOnlineMembers())
-                {
-                    player.TSplayer.SendMessage(message, Color.BurlyWood);
-                }
-            }
-            public void MessageAdmins(String message)
-            {
-                foreach (Player player in this.GetOnlineMembers())
-                {
-                    if (this.Admins.Contains(player.UserID))
-                        player.TSplayer.SendMessage(message, Color.BurlyWood);
-                }
-            }
-            public bool InFactionTerritory(Point point)
-            {
-                foreach (Region region in this.Regions)
-                {
-                    if (region.InArea(point))
-                        return true;
-                }
-                return false;
-            }
-
-            /*
-             *    ---------------------------------------------- Static Faction methods ----------------------------------------
-             */
-            public static bool IsValidName(string name)
-            {
-                string validchars = " 1234567890aAbBcCdDeEfFgGhHiIjJkKlLmMnNoOpPqQrRsStTuUvVwWxXzZyY";
-                foreach (char c in name.ToCharArray())
-                {
-                    if (!validchars.Contains(c))
-                        return false;
-                }
-                if (name.StartsWith(" "))
-                    return false;
-                if (name.Length > 20)
-                    return false;
-                return true;
-            }
-            public static void AllyFactions(Faction faction1, Faction faction2)
-            {
-                if (faction1.ID == faction2.ID)
-                    return;
-                faction1.AllyInvites.Remove(faction2.ID);
-                faction2.AllyInvites.Remove(faction1.ID);
-                faction1.Enemies.Remove(faction2.ID);
-                faction2.Enemies.Remove(faction1.ID);
-                if (!faction1.Allies.Contains(faction2.ID))
-                    faction1.Allies.Add(faction2.ID);
-                if (!faction2.Allies.Contains(faction1.ID))
-                    faction2.Allies.Add(faction1.ID);
-                db.Query("UPDATE factions_Factions SET Allies = @0, AllyInvites = @1, Enemies = @2 WHERE ID = @3", String.Join(",", faction1.Allies), String.Join(",", faction1.AllyInvites), String.Join(",", faction1.Enemies), faction1.ID);
-                db.Query("UPDATE factions_Factions SET Allies = @0, AllyInvites = @1, Enemies = @2 WHERE ID = @3", String.Join(",", faction2.Allies), String.Join(",", faction2.AllyInvites), String.Join(",", faction2.Enemies), faction2.ID); 
-
-            }
-            public static void BreakAlly(Faction faction1, Faction faction2)
-            {
-                if (faction1.ID == faction2.ID)
-                    return;
-                faction1.Allies.Remove(faction2.ID);
-                faction2.Allies.Remove(faction1.ID);
-                db.Query("UPDATE factions_Factions SET Allies = @0 WHERE ID = @1", String.Join(",", faction1.Allies), faction1.ID);
-                db.Query("UPDATE factions_Factions SET Allies = @0 WHERE ID = @1", String.Join(",", faction2.Allies), faction2.ID); 
-            }
-        }
-
-
         private static string savepath = Path.Combine(TShock.SavePath, "Factions/");
         private static IDbConnection db;
-
-        private static List<Faction> FactionList = new List<Faction>();
-        private static List<Region> Regions = new List<Region>();
-        private static Player[] PlayerList = new Player[256];
+        public static void DoQuery(String query, params object[] args)
+        {
+            db.Query(query, args);
+        }
+        public static QueryResult GetQuery(String query, params object[] args)
+        {
+            return db.QueryReader(query, args);
+        }
+        public static List<Faction> FactionList = new List<Faction>();
+        public static List<Region> Regions = new List<Region>();
+        public static Player[] PlayerList = new Player[256];
         private static Thread UpdatePowerThread = new Thread(UpdatePower);
         private static void UpdatePower()
         {
@@ -753,7 +69,7 @@ namespace Factions
         }
         public override Version Version
         {
-            get { return new Version("0.6"); }
+            get { return new Version("0.65"); }
         }
         public Factions(Main game)
             : base(game)
@@ -823,7 +139,7 @@ namespace Factions
                     {
                         if (reader.Read())
                         {
-                            var faction = GetFactionByID(reader.Get<int>("Faction"));
+                            var faction = Faction.GetFactionByID(reader.Get<int>("Faction"));
                             PlayerList[who] = new Player(who, reader.Get<int>("Power"), faction);
                             reader.Dispose();
                             db.Query("UPDATE factions_Players SET Online = 1 WHERE UserID = @0 AND WorldID = @1", player.TSplayer.UserID, Main.worldID);
@@ -882,7 +198,7 @@ namespace Factions
                         QueryResult reader = db.QueryReader("SELECT * FROM factions_Players WHERE UserID = @0 AND WorldID = @1", player.UserID, Main.worldID);
                         if (reader.Read())
                         {                            
-                            var faction = GetFactionByID(reader.Get<int>("Faction"));
+                            var faction = Faction.GetFactionByID(reader.Get<int>("Faction"));
                             PlayerList[who] = new Player(who, reader.Get<int>("Power"), faction);
                             if (faction != null)
                                 player.SetTeam(faction.Team);
@@ -919,7 +235,7 @@ namespace Factions
         private static void DisplayRegionInfo(Player player)
         {
             OutlineRegion(player);
-            var region = GetRegionFromLocation(player.TSplayer.TileX, player.TSplayer.TileY);
+            var region = Region.GetRegionFromLocation(player.TSplayer.TileX, player.TSplayer.TileY);
             List<MenuItem> menuData = new List<MenuItem>();
             menuData.Add(new MenuItem(String.Format("Plot ({0}, {1}) - ({2}, {3})", region.X, region.Y, region.X + region.Width - 1, region.Y + region.Height - 1), 0, false, Color.Gray));
             if (region.ID == -1)
@@ -974,7 +290,7 @@ namespace Factions
                 }
                 else if (region.Faction != 0)
                 {
-                    var faction = GetFactionByID(region.Faction);
+                    var faction = Faction.GetFactionByID(region.Faction);
                     if (player.Faction != null && player.Faction.Equals(faction))
                     {
                         menuData.Add(new MenuItem("This land belongs to your Faction", 0, false, Color.LightGray));
@@ -993,7 +309,7 @@ namespace Factions
                     menuData.Add(new MenuItem("Abnormal", -1, false, Color.LightGray));
             }
             if (player.Menu == null)
-                player.Menu = Chat.CreateMenu(player.ID, "Plot manager", menuData, new Chat.MenuAction(OnMenu));
+                player.Menu = Menu.CreateMenu(player.ID, "Plot manager", menuData, new CAMain.MenuAction(OnMenu));
             else
             {
                 player.Menu.title = "Plot manager";
@@ -1049,7 +365,7 @@ namespace Factions
                         return;
                     }
                     var targetName = String.Join(" ", args.Parameters.GetRange(1, args.Parameters.Count-1));
-                    var target = GetPlayerByName(targetName);
+                    var target = Player.GetPlayerByName(targetName);
                     if (target == null)                    
                         player.TSplayer.SendMessage(String.Format("Could not find player '{0}'", targetName), Color.LightSalmon);
                     else if (target.UserID == -1)
@@ -1072,7 +388,7 @@ namespace Factions
                 menuData.Add(new MenuItem("[ Faction information & management ]", 3, Color.LightGray));
                 menuData.Add(new MenuItem("[ Player information & management ]", 4, Color.LightGray));
                 menuData.Add(new MenuItem("[ Exit ]", -1, Color.Gray));
-                Chat.CreateMenu(player.ID, "Factions", menuData, new Chat.MenuAction(OnMenu));
+                Menu.CreateMenu(player.ID, "Factions", menuData, new CAMain.MenuAction(OnMenu));
 
             }
         }
@@ -1082,15 +398,15 @@ namespace Factions
             var player = PlayerList[args.PlayerID];
             if (player != null)
             {
-                if (args.Status == 0)
+                if (args.Status == MenuStatus.Exit)
                 {
                     player.ClearOutline();
                     player.Menu = null;
                     return;
                 }
-                else if (args.Status == 1 && args.Selected >= 0 && args.Selected < args.Data.Count)
+                else if (args.Status == MenuStatus.Select && args.Selected >= 0 && args.Selected < args.Data.Count)
                 {
-                    player.Menu = (Chat.Menu)menu;                        
+                    player.Menu = (Menu)menu;                        
                     int value = args.Data[args.Selected].Value;
                     switch (value)
                     {
@@ -1161,7 +477,7 @@ namespace Factions
                             }
                         case 23: // unclaim plot confirmation
                             {
-                                var region = GetRegionFromLocation(player.TSplayer.TileX, player.TSplayer.TileY);
+                                var region = Region.GetRegionFromLocation(player.TSplayer.TileX, player.TSplayer.TileY);
                                 if (region.ID != -1)
                                 {
                                     if ((region.Owner != 0 && player.UserID == region.Owner) || (region.Faction != 0 && player.Faction != null && player.Faction.ID == region.Faction && player.Faction.IsAdmin(player.UserID)))
@@ -1236,7 +552,7 @@ namespace Factions
                                 var factname = player.Menu.GetItemByValue(3101);
                                 player.Menu.contents.Clear();
                                 player.Menu.index = 0;
-                                foreach (Faction fact in GetTopFactionsByPower())
+                                foreach (Faction fact in Faction.GetTopFactionsByPower())
                                 {
                                     if (factname != null && factname.Text == fact.Name)
                                         player.Menu.index = player.Menu.contents.Count;
@@ -1252,7 +568,7 @@ namespace Factions
                             }
                         case 310: // Faction Information
                             {
-                                var faction = GetFactionByName(args.Data[args.Selected].Input);
+                                var faction = Faction.GetFactionByName(args.Data[args.Selected].Input);
                                 if (faction != null)
                                 {
                                     player.Menu.title = "Faction information";
@@ -1322,7 +638,7 @@ namespace Factions
                             }
                         case 3100: // Join Faction
                             {
-                                var faction = GetFactionByName(player.Menu.GetItemByValue(3101).Text);
+                                var faction = Faction.GetFactionByName(player.Menu.GetItemByValue(3101).Text);
                                 if (faction != null)
                                 {
 
@@ -1350,7 +666,7 @@ namespace Factions
                             {
                                 try
                                 {
-                                    var faction = GetFactionByName(player.Menu.GetItemByValue(3101).Text);
+                                    var faction = Faction.GetFactionByName(player.Menu.GetItemByValue(3101).Text);
                                     if (faction != null)
                                     {
                                         player.Menu.contents.Clear();
@@ -1385,7 +701,7 @@ namespace Factions
                             {
                                 try
                                 {
-                                    var faction = GetFactionByName(player.Menu.GetItemByValue(3101).Text);
+                                    var faction = Faction.GetFactionByName(player.Menu.GetItemByValue(3101).Text);
                                     if (faction != null)
                                     {
                                         player.Menu.contents.Clear();
@@ -1409,7 +725,7 @@ namespace Factions
                             {
                                 try
                                 {
-                                    var faction = GetFactionByName(player.Menu.GetItemByValue(3101).Text);
+                                    var faction = Faction.GetFactionByName(player.Menu.GetItemByValue(3101).Text);
                                     if (faction != null)
                                     {
                                         player.Menu.contents.Clear();
@@ -1433,7 +749,7 @@ namespace Factions
                             {
                                 try
                                 {
-                                    var faction = GetFactionByName(player.Menu.GetItemByValue(3101).Text);
+                                    var faction = Faction.GetFactionByName(player.Menu.GetItemByValue(3101).Text);
                                     if (faction != null)
                                     {
                                         player.Menu.contents.Clear();
@@ -1505,7 +821,7 @@ namespace Factions
                             {
                                 String newFactName = player.Menu.GetItemByValue(321).Input;
                                 String newFactDesc = player.Menu.GetItemByValue(322).Input;
-                                if (GetFactionByName(newFactName) == null)
+                                if (Faction.GetFactionByName(newFactName) == null)
                                 {
                                     
                                     db.Query("INSERT INTO factions_Factions (Name, Description, Members, Admins, Power, Flags, WorldID) VALUES (@0, @1, @2, @3, @4, @5, @6)", newFactName, newFactDesc, player.TSplayer.UserID, player.TSplayer.UserID, player.Power, 0, Main.worldID);
@@ -1523,7 +839,7 @@ namespace Factions
                                         FactionList.Add(newFaction);
                                         player.Faction = newFaction;
                                         player.TSplayer.SendMessage("Faction created");
-                                        var playerregions = GetRegionsByUserID(player.UserID);
+                                        var playerregions = Region.GetRegionsByUserID(player.UserID);
                                         foreach (Region region in playerregions)
                                         {
                                             UnclaimRegion(region);
@@ -1768,9 +1084,9 @@ namespace Factions
                     }                    
 
                 }
-                else if (args.Status == 2)
+                else if (args.Status == MenuStatus.Input)
                 {
-                    player.Menu = (Chat.Menu)menu;
+                    player.Menu = (Menu)menu;
                     int value = args.Data[args.Selected].Value;
                     string input = args.Data[args.Selected].Input;
                     switch (value)
@@ -1816,7 +1132,7 @@ namespace Factions
                                     player.Menu.contents[args.Selected].Color = Color.Red;
                                     player.Menu.contents[args.Selected].Text = "Name: @0 [invalid]";                                    
                                 }
-                                else if (GetFactionByName(input) == null)
+                                else if (Faction.GetFactionByName(input) == null)
                                 {
                                     player.Menu.contents[args.Selected].Color = Color.Green;
                                     player.Menu.contents[args.Selected].Text = "Name: @0 [ok]";
@@ -1958,7 +1274,7 @@ namespace Factions
                         Regions.Add(newregion);
                         if (newregion.Faction != 0)
                         {
-                            var faction = GetFactionByID(newregion.Faction);
+                            var faction = Faction.GetFactionByID(newregion.Faction);
                             if (faction != null)
                                 faction.Regions.Add(newregion);
                         }
@@ -2519,97 +1835,9 @@ namespace Factions
             catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
         }
 
-        private static Faction GetFactionByID(int id)
-        {
-            foreach (Faction fact in FactionList)
-            {
-                if (fact.ID == id)
-                    return fact;
-            }
-            return null;
-        }
-        private static Faction GetFactionByName(string name)
-        {
-            foreach (Faction fact in FactionList)
-            {
-                if (fact.Name == name)
-                    return fact;
-            }
-            return null;
-        }
-        private static List<Faction> GetTopFactionsByPower() { return GetTopFactionsByPower(0); }
-        private static List<Faction> GetTopFactionsByPower(int count)
-        {
-            var sorted = from fact in FactionList orderby fact.Power descending select fact;
-            return sorted.ToList();
-        }
-        private static Region GetRegionByID(int id)
-        {
-            foreach (Region reg in Regions)
-            {
-                if (reg.ID == id)
-                    return reg;
-            }
-            return new Region(-1, 0, 0);
-        }
-        private static List<Region> GetRegionsByUserID(int userid)
-        {
-            List<Region> ReturnList = new List<Region>();
-            foreach (Region reg in Regions)
-            {
-                if (reg.Owner != -1 && reg.Owner == userid)
-                    ReturnList.Add(reg);
-            }
-            return ReturnList;
-        }
-        private static Region GetRegionFromLocation(int x, int y)
-        {
-            foreach (Region reg in Regions)
-            {
-                if (reg.InArea(x, y))
-                    return reg;
-            }
-            var newregion = new Region(-1, x, y);
-            newregion.X = (int)(newregion.X / newregion.Width) * newregion.Width;
-            newregion.Y = (int)(newregion.Y / newregion.Height) * newregion.Height;
-            return newregion;
-        }
-        private static List<TShockAPI.DB.Region> GetTSRegionsFromLocation(int x, int y)
-        {
-            List<TShockAPI.DB.Region> returnList = new List<TShockAPI.DB.Region>();
-            foreach (TShockAPI.DB.Region region in TShock.Regions.Regions)
-            {
-                if (region.InArea(x, y))
-                    returnList.Add(region);
-            }
-            return returnList;
-        }
-        private static Player GetPlayerByUserID(int userid)
-        {
-            try
-            {
-                for (int i = 0; i < PlayerList.Length; i++)
-                {
-                    if (PlayerList[i] != null && PlayerList[i].UserID == userid)
-                        return PlayerList[i];
-                }
-            }
-            catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-            return null;
-        }
-        private static Player GetPlayerByName(string name)
-        {
-            try
-            {
-                for (int i = 0; i < PlayerList.Length; i++)
-                {
-                    if (PlayerList[i] != null && PlayerList[i].TSplayer.Name == name)
-                        return PlayerList[i];
-                }
-            }
-            catch (Exception ex) { Log.ConsoleError(ex.ToString()); }
-            return null;
-        }
+
+
+
         private static bool UnclaimRegion(Region region)
         {
             try
@@ -2620,7 +1848,7 @@ namespace Factions
                     region.Owner = 0;
                     if (region.Faction != 0)
                     {
-                        var faction = GetFactionByID(region.Faction);
+                        var faction = Faction.GetFactionByID(region.Faction);
                         if (faction != null)
                             faction.Regions.Remove(region);
                     }
@@ -2649,7 +1877,7 @@ namespace Factions
             if (player.TSplayer.Group.Name == "superadmin" || player.TSplayer.Group.HasPermission("factions.bypass.regions"))
                 return 1;
 
-            var region = GetRegionFromLocation(point.X, point.Y);
+            var region = Region.GetRegionFromLocation(point.X, point.Y);
             if (region.ID != -1)
             {
                 if ((region.Owner != 0 && region.Owner == player.UserID) || (region.Faction != 0 && player.Faction != null && region.Faction == player.Faction.ID))
@@ -2659,7 +1887,7 @@ namespace Factions
             }
             else
             {
-                var tsRegions = GetTSRegionsFromLocation(point.X, point.Y);
+                var tsRegions = Region.GetTSRegionsFromLocation(point.X, point.Y);
                 foreach (TShockAPI.DB.Region reg in tsRegions)
                 {
                     if (!reg.HasPermissionToBuildInRegion(player.TSplayer))
@@ -2679,7 +1907,7 @@ namespace Factions
             int height = 20;
             int x = (int)(player.TSplayer.TileX / width) * width;
             int y = (int)(player.TSplayer.TileY / height) * height;
-            if (GetRegionFromLocation(player.TSplayer.TileX, player.TSplayer.TileY).ID != -1 || RectInRegion(new Rectangle(x, y, width, height)))
+            if (Region.GetRegionFromLocation(player.TSplayer.TileX, player.TSplayer.TileY).ID != -1 || RectInRegion(new Rectangle(x, y, width, height)))
                 return null;
             int owner = 0;
             int faction = 0;
@@ -2709,7 +1937,7 @@ namespace Factions
             int height = 20;
             int x = (int)(p.X / width) * width;
             int y = (int)(p.Y / height) * height;
-            if (GetRegionFromLocation(p.X, p.Y).ID != -1 || RectInRegion(new Rectangle(x, y, width, height)))
+            if (Region.GetRegionFromLocation(p.X, p.Y).ID != -1 || RectInRegion(new Rectangle(x, y, width, height)))
                 return -1;
             
             int baseprice = 20;
@@ -2717,7 +1945,7 @@ namespace Factions
             float apartmultiply = 1f;
             if (player.Faction == null)
             {
-                var regions = GetRegionsByUserID(player.UserID);
+                var regions = Region.GetRegionsByUserID(player.UserID);
                 if (regions.Count >= 3)
                     return -2;
                 if (p.Y <= Main.worldSurface)
@@ -2751,12 +1979,8 @@ namespace Factions
                 return true;
             foreach (Region region in regionList)
             {
-                if (PointNextToRegion(region, point))
-                {
-                    Console.WriteLine("Its next to it!");
-                    return true;
-
-                }
+                if (PointNextToRegion(region, point))                
+                    return true;                
             }
             return false;
         }
